@@ -2,6 +2,8 @@ const puppeteer = require("puppeteer-extra");
 const StealthPlugin = require("puppeteer-extra-plugin-stealth");
 const URL = require("url-parse");
 const { setTimeout } = require("node:timers/promises");
+const fs = require("fs").promises;
+const path = require("path");
 
 // Add stealth plugin
 puppeteer.use(StealthPlugin());
@@ -10,6 +12,15 @@ class ScriptCounter {
   constructor() {
     console.log("Initializing ScriptCounter");
     this.baseDomain = null;
+    this.screenshotsDir = path.join(process.cwd(), "screenshots");
+  }
+
+  async ensureScreenshotsDirectory() {
+    try {
+      await fs.access(this.screenshotsDir);
+    } catch {
+      await fs.mkdir(this.screenshotsDir, { recursive: true });
+    }
   }
 
   async retryOperation(operation, maxRetries = 3, delay = 1000) {
@@ -40,10 +51,33 @@ class ScriptCounter {
     throw lastError;
   }
 
-  async countScripts(url) {
+  async takeScreenshot(page, url) {
+    await this.ensureScreenshotsDirectory();
+
+    // Create a safe filename from the URL
+    const urlObj = new URL(url);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `${urlObj.hostname}-${timestamp}.png`;
+    const filepath = path.join(this.screenshotsDir, filename);
+
+    // Take full page screenshot
+    await page.screenshot({
+      path: filepath,
+      fullPage: true,
+      type: "png",
+    });
+
+    return {
+      filename,
+      path: filepath,
+    };
+  }
+
+  async countScripts(url, takeScreenshot = false) {
     console.log(`Starting script count for URL: ${url}`);
     let browser;
     let page;
+    let screenshotInfo = null;
 
     try {
       browser = await puppeteer.launch({
@@ -230,6 +264,13 @@ class ScriptCounter {
       // Wait for any delayed scripts
       await setTimeout(3000); // Increased wait time
 
+      // Take screenshot if requested
+      if (takeScreenshot) {
+        console.log("Taking screenshot...");
+        screenshotInfo = await this.takeScreenshot(page, finalUrl);
+        console.log("Screenshot taken:", screenshotInfo.filename);
+      }
+
       // Count scripts
       console.log("Counting scripts...");
       const scriptCounts = await page.evaluate((baseDomain) => {
@@ -288,6 +329,12 @@ class ScriptCounter {
         thirdPartyScripts: scriptCounts.thirdParty,
         pageUrl: finalUrl,
         requestedUrl: url,
+        screenshot: screenshotInfo
+          ? {
+              filename: screenshotInfo.filename,
+              path: screenshotInfo.path,
+            }
+          : null,
       };
     } catch (error) {
       console.error("Error in countScripts:", error);
