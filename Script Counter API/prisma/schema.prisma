@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Website {
+  id              Int      @id @default(autoincrement())
+  url             String   @unique
+  screenshotPath  String?
+  lastAnalyzedAt  DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  analyses        Analysis[]
+  tags            Tag[]
+}
+
+model Analysis {
+  id              Int      @id @default(autoincrement())
+  websiteId       Int
+  website         Website  @relation(fields: [websiteId], references: [id])
+  firstPartyCount Int
+  thirdPartyCount Int
+  inlineCount     Int
+  rawResults      String   // JSON string of detailed results
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Tag {
+  id        Int      @id @default(autoincrement())
+  name      String
+  count     Int
+  websiteId Int
+  website   Website  @relation(fields: [websiteId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, websiteId])
+} 
